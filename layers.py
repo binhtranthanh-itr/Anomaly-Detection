@@ -69,6 +69,7 @@ class ConvLayer(Layer):
         self.input = input_
         self.output = conv2d(input_, self.filters, self.dilation, self.stride) + self.bias[np.newaxis, :, np.newaxis,
                                                                                  np.newaxis]
+
         return self.output
 
     def backward(self, top_grad):
@@ -146,6 +147,7 @@ class Network:
         self.params = []
         self.grads = []
         self.optimizer_built = False
+
 
     def add_layer(self, layer):
         """
@@ -226,3 +228,86 @@ class Network:
         file.close()
 
         self.__dict__ = cPickle.loads(dataPickle)
+
+class Activation(Layer):
+    def __init__(self, activation):
+        """
+        activation = ['softmax', 'relu', 'elu', 'selu']
+        """
+        Layer.__init__(self)
+        self.cache = {}
+        self.has_units = False
+        self.activation = np.char.lower(activation)
+        self.forward_propagate = str(np.char.lower(activation)) + '_forward_propagate'
+    def has_weights(self):
+        return self.has_units
+
+    def forward(self, Z, save_cache = False):
+        # func = str(self.activation) + '_forward_propagate'
+        return self.relu_forward_propagate(Z, save_cache)
+        # return getattr(self, self.activation + '_forward_propagate')(Z, save_cache)
+
+    def backward(self, dA):
+        # func = str(self.activation) + '_back_propagate'
+        # return func(dA)
+        return self.relu_back_propagate(dA)
+        # return getattr(self, self.activation + '_back_propagate')(dA)
+
+    def softmax_forward_propagate(self, Z, save_cache = False):
+        if save_cache:
+            self.cache['Z'] = Z
+        Z_ = Z - Z.max()
+        e = np.exp(Z_)
+        return e / np.sum(e, axis=0, keepdims=True)
+
+    def elu_forward_propagate(self, Z, save_cache=False, alpha=1.2):
+        self.param = {'alpha': alpha}
+        if save_cache:
+            self.cache['Z'] = Z
+        return np.where(Z >= 0, Z, self.params['alpha'] * (np.exp(Z) - 1))
+
+    def selu_forward_propagate(self, Z, save_cache=False, alpha=1.6733, selu_lambda=1.0507):
+        self.params = {
+            'alpha': alpha,
+            'lambda': selu_lambda
+        }
+        if save_cache:
+            self.cache['Z'] = Z
+        return self.params['lambda'] * np.where(Z >= 0, Z, self.params['alpha'] * (np.exp(Z) - 1))
+
+    def relu_forward_propagate(self, Z, save_cache=True):
+        # if save_cache:
+        self.cache['Z'] = Z
+        return np.where(Z >= 0, Z, 0)
+
+    def softmax_back_propagate(self, dA):
+        Z = self.cache['Z']
+        return dA * (Z * (1 - Z))
+
+    def elu_back_propagate(self, dA, alpha=1.2):
+        try:
+            alpha = self.param['alpha']
+        except:
+            pass
+
+        Z = self.cache['Z']
+        return dA * np.where(Z >= 0, 1, self.forward_propagate(Z, alpha) + alpha)
+
+    def selu_back_propagate(self, dA):
+        try:
+            selu_lambda = self.params['lamda']
+        except:
+            pass
+
+        try:
+            alpha = self.params['alpha']
+        except:
+            pass
+
+        Z = self.cache['Z']
+        selu_lambda, alpha = selu_lambda, alpha
+        return dA * selu_lambda*np.where(Z >= 0, 1, alpha*np.exp(Z))
+
+    def relu_back_propagate(self, dA):
+        Z = self.cache['Z']
+        return dA * np.where(Z >= 0, 1, 0)
